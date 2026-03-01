@@ -1,6 +1,5 @@
 use sqlx::{PgConnection, Connection};
 use tokio::net::TcpListener;
-use tokio::spawn;
 use zero2prod::configuration::get_configuration;
 use zero2prod::startup::run;
 
