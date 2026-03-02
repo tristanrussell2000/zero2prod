@@ -2,10 +2,10 @@ use crate::routes::{health_check, subscribe};
 use axum::Router;
 use axum::routing::{get, post};
 use axum::serve::Serve;
+use tower_http::trace::TraceLayer;
 use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-
 pub fn run(
     listener: TcpListener,
     db_pool: PgPool,
@@ -14,7 +14,8 @@ pub fn run(
     let app = Router::new()
         .route("/healthcheck", get(health_check))
         .route("/subscriptions", post(subscribe))
-        .with_state(shared_db_pool);
+        .with_state(shared_db_pool)
+        .layer(TraceLayer::new_for_http());
 
     let serve = axum::serve(listener, app);
     Ok(serve)
