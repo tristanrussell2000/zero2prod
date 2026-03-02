@@ -1,4 +1,4 @@
-use sqlx::{PgPool};
+use sqlx::PgPool;
 use tokio::net::TcpListener;
 use zero2prod::configuration::get_configuration;
 use zero2prod::startup::run;
