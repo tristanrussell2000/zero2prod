@@ -18,6 +18,9 @@ DB_USER=${POSTGRES_USER:=postgres}
 DB_PASSWORD="${POSTGRES_PASSWORD:=password}"
 DB_NAME="${POSTGRES_DB:=newsletter}"
 DB_PORT="${POSTGRES_PORT:=5432}"
+APP_USER="${APP_USER:=app}"
+APP_USER_PWD="${APP_USER_PWD:=secret}"
+APP_DB_NAME="${APP_DB_NAME:=newsletter}"
 
 if [[ -z "${SKIP_DOCKER}" ]]
 then
