@@ -1,11 +1,15 @@
 use crate::routes::{health_check, subscribe};
 use axum::Router;
+use axum::http::Request;
 use axum::routing::{get, post};
 use axum::serve::Serve;
 use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
+use tracing::info_span;
+use uuid::Uuid;
+
 pub fn run(
     listener: TcpListener,
     db_pool: PgPool,
@@ -15,7 +19,15 @@ pub fn run(
         .route("/healthcheck", get(health_check))
         .route("/subscriptions", post(subscribe))
         .with_state(shared_db_pool)
-        .layer(TraceLayer::new_for_http());
+        .layer(
+            TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {
+                info_span!(
+                    "http_request",
+                    method = ?request.method(),
+                    request_id = %Uuid::new_v4()
+                )
+            }),
+        );
 
     let serve = axum::serve(listener, app);
     Ok(serve)

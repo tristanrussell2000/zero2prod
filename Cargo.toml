@@ -21,6 +21,8 @@ tracing-subscriber = { version = "0.3.22" , features = ["env-filter", "registry"
 tracing = { version = "0.1.44", features = ["log"] }
 tracing-bunyan-formatter = "0.3"
 tracing-log = "0.2.0"
+once_cell = "1.21.3"
+secrecy = { version = "0.10.3", features = ["serde"] }
 [dependencies.sqlx]
 version = "0.8"
 default-features = false
