@@ -1,0 +1,2 @@
+[alias]
+pedantic = ["clippy", "--", "-W", "clippy::pedantic", "-W", "clippy::nursery" ]
