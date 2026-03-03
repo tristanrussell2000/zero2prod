@@ -2,10 +2,10 @@ use crate::routes::{health_check, subscribe};
 use axum::Router;
 use axum::routing::{get, post};
 use axum::serve::Serve;
-use tower_http::trace::TraceLayer;
 use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::net::TcpListener;
+use tower_http::trace::TraceLayer;
 pub fn run(
     listener: TcpListener,
     db_pool: PgPool,

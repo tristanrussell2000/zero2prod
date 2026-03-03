@@ -17,8 +17,10 @@ serde = { version = "1", features = ["derive"]}
 config = "0.11"
 uuid = { version = "1.21.0", features = ["v4"] }
 tower-http = { version = "0.6.8", features = ["trace"] }
-tracing-subscriber = { version = "0.3.22" , features = ["env-filter"] }
-
+tracing-subscriber = { version = "0.3.22" , features = ["env-filter", "registry"] }
+tracing = { version = "0.1.44", features = ["log"] }
+tracing-bunyan-formatter = "0.3"
+tracing-log = "0.2.0"
 [dependencies.sqlx]
 version = "0.8"
 default-features = false
