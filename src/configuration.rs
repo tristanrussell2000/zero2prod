@@ -1,8 +1,6 @@
 use secrecy::{ExposeSecret, SecretString};
 use serde_aux::field_attributes::deserialize_number_from_string;
-use sqlx::ConnectOptions;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
-use tracing::log::LevelFilter;
 
 #[derive(serde::Deserialize)]
 pub struct Settings {
@@ -30,8 +28,8 @@ pub struct DatabaseSettings {
 
 impl DatabaseSettings {
     pub fn with_db(&self) -> PgConnectOptions {
-        let options = self.without_db().database(&self.database_name);
-        options.log_statements(LevelFilter::Trace)
+        self.without_db().database(&self.database_name)
+        //options.log_statements(LevelFilter::Trace)
     }
 
     pub fn without_db(&self) -> PgConnectOptions {
