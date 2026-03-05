@@ -28,6 +28,7 @@ serde-aux = "4.7.0"
 version = "0.8"
 default-features = false
 features = [
+    "tls-rustls",
     "runtime-tokio",
     "macros",
     "postgres",
