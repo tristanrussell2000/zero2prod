@@ -1,4 +1,4 @@
-use crate::domain::{NewSubscriber, SubscriberEmail, SubscriberName};
+use crate::domain::NewSubscriber;
 use axum::Form;
 use axum::extract::State;
 use axum::extract::rejection::FormRejection;
@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 #[derive(serde::Deserialize, Debug)]
 pub struct FormData {
-    email: String,
-    name: String,
+    pub email: String,
+    pub name: String,
 }
 
 #[tracing::instrument(name = "Adding a new subscriber", skip(connection))]
@@ -21,19 +21,9 @@ pub async fn subscribe(
 ) -> StatusCode {
     match sign_up {
         Ok(Form(form_data)) => {
-            let name = match SubscriberName::parse(form_data.name) {
-                Ok(name) => name,
-                Err(_) => {
-                    return StatusCode::BAD_REQUEST;
-                }
+            let Ok(new_subscriber) = form_data.try_into() else {
+                return StatusCode::BAD_REQUEST;
             };
-            let email = match SubscriberEmail::parse(form_data.email) {
-                Ok(email) => email,
-                Err(_) => {
-                    return StatusCode::BAD_REQUEST;
-                }
-            };
-            let new_subscriber = NewSubscriber { email, name };
             match insert_subscriber(&connection, &new_subscriber).await {
                 Ok(_) => {
                     tracing::info!("New subscriber details have been saved",);
