@@ -1,3 +1,4 @@
+use crate::email_client::EmailClient;
 use crate::routes::{health_check, subscribe};
 use axum::Router;
 use axum::http::Request;
@@ -10,15 +11,17 @@ use tower_http::trace::TraceLayer;
 use tracing::info_span;
 use uuid::Uuid;
 
+pub struct AppState(pub PgPool, pub EmailClient);
+
 pub fn run(
     listener: TcpListener,
     db_pool: PgPool,
+    email_client: EmailClient,
 ) -> Result<Serve<TcpListener, Router, Router>, std::io::Error> {
-    let shared_db_pool = Arc::new(db_pool);
     let app = Router::new()
         .route("/healthcheck", get(health_check))
         .route("/subscriptions", post(subscribe))
-        .with_state(shared_db_pool)
+        .with_state(Arc::new(AppState(db_pool, email_client)))
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {
                 info_span!(

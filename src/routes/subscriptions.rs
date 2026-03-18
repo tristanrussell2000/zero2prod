@@ -1,4 +1,5 @@
 use crate::domain::NewSubscriber;
+use crate::startup::AppState;
 use axum::Form;
 use axum::extract::State;
 use axum::extract::rejection::FormRejection;
@@ -16,15 +17,16 @@ pub struct FormData {
 
 #[tracing::instrument(name = "Adding a new subscriber", skip(connection))]
 pub async fn subscribe(
-    State(connection): State<Arc<PgPool>>,
+    State(connection): State<Arc<AppState>>,
     sign_up: Result<Form<FormData>, FormRejection>,
 ) -> StatusCode {
+    let connection = &connection.0;
     match sign_up {
         Ok(Form(form_data)) => {
             let Ok(new_subscriber) = form_data.try_into() else {
                 return StatusCode::BAD_REQUEST;
             };
-            match insert_subscriber(&connection, &new_subscriber).await {
+            match insert_subscriber(connection, &new_subscriber).await {
                 Ok(_) => {
                     tracing::info!("New subscriber details have been saved",);
                     StatusCode::OK
