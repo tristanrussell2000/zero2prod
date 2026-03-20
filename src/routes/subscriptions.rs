@@ -15,12 +15,13 @@ pub struct FormData {
     pub name: String,
 }
 
-#[tracing::instrument(name = "Adding a new subscriber", skip(connection))]
+#[tracing::instrument(name = "Adding a new subscriber", skip(app_state))]
 pub async fn subscribe(
-    State(connection): State<Arc<AppState>>,
+    State(app_state): State<Arc<AppState>>,
     sign_up: Result<Form<FormData>, FormRejection>,
 ) -> StatusCode {
-    let connection = &connection.0;
+    let connection = &app_state.0;
+    let email_client = &app_state.1;
     match sign_up {
         Ok(Form(form_data)) => {
             let Ok(new_subscriber) = form_data.try_into() else {
@@ -28,6 +29,19 @@ pub async fn subscribe(
             };
             match insert_subscriber(connection, &new_subscriber).await {
                 Ok(_) => {
+                    let res = email_client
+                        .send_email(
+                            new_subscriber.email,
+                            "Welcome!",
+                            "Welcome to our newsletter!",
+                            "Welcome to our newsletter!",
+                        )
+                        .await;
+
+                    if let Err(e) = res {
+                        tracing::error!("Failed to send email: {}", e);
+                        return StatusCode::INTERNAL_SERVER_ERROR;
+                    }
                     tracing::info!("New subscriber details have been saved",);
                     StatusCode::OK
                 }
