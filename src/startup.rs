@@ -1,6 +1,6 @@
 use crate::configuration::{DatabaseSettings, Settings};
 use crate::email_client::EmailClient;
-use crate::routes::{health_check, subscribe};
+use crate::routes::{confirm, health_check, subscribe};
 use axum::Router;
 use axum::http::Request;
 use axum::routing::{get, post};
@@ -13,7 +13,11 @@ use tower_http::trace::TraceLayer;
 use tracing::info_span;
 use uuid::Uuid;
 
-pub struct AppState(pub PgPool, pub EmailClient);
+pub struct AppState {
+    pub db_pool: PgPool,
+    pub email_client: EmailClient,
+    pub base_url: String,
+}
 
 pub struct Application {
     port: u16,
@@ -45,7 +49,12 @@ impl Application {
         let port = listener.local_addr()?.port();
         Ok(Self {
             port,
-            server: run(listener, connection_pool, email_client)?,
+            server: run(
+                listener,
+                connection_pool,
+                email_client,
+                configuration.application.base_url,
+            )?,
         })
     }
 
@@ -62,15 +71,23 @@ pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
     PgPoolOptions::new().connect_lazy_with(configuration.with_db())
 }
 
+pub struct ApplicationBaseUrl(pub String);
+
 pub fn run(
     listener: TcpListener,
     db_pool: PgPool,
     email_client: EmailClient,
+    base_url: String,
 ) -> Result<Serve<TcpListener, Router, Router>, std::io::Error> {
     let app = Router::new()
         .route("/healthcheck", get(health_check))
         .route("/subscriptions", post(subscribe))
-        .with_state(Arc::new(AppState(db_pool, email_client)))
+        .route("/subscriptions/confirm", get(confirm))
+        .with_state(Arc::new(AppState {
+            db_pool,
+            email_client,
+            base_url,
+        }))
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {
                 info_span!(

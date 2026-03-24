@@ -21,8 +21,8 @@ pub async fn subscribe(
     State(app_state): State<Arc<AppState>>,
     sign_up: Result<Form<FormData>, FormRejection>,
 ) -> StatusCode {
-    let connection = &app_state.0;
-    let email_client = &app_state.1;
+    let connection = &app_state.db_pool;
+    let email_client = &app_state.email_client;
     match sign_up {
         Ok(Form(form_data)) => {
             let Ok(new_subscriber) = form_data.try_into() else {
@@ -30,7 +30,9 @@ pub async fn subscribe(
             };
             match insert_subscriber(connection, &new_subscriber).await {
                 Ok(_) => {
-                    let res = send_confirmation_email(email_client, new_subscriber).await;
+                    let res =
+                        send_confirmation_email(email_client, new_subscriber, &app_state.base_url)
+                            .await;
                     if res.is_err() {
                         return StatusCode::INTERNAL_SERVER_ERROR;
                     }
@@ -57,8 +59,12 @@ pub async fn subscribe(
 pub async fn send_confirmation_email(
     email_client: &EmailClient,
     new_subscriber: NewSubscriber,
+    base_url: &str,
 ) -> Result<(), reqwest::Error> {
-    let confirmation_link = "https://my-api.com/subscriptions/confirm";
+    let confirmation_link = format!(
+        "{}/subscriptions/confirm?subscription_token=mytoken",
+        base_url
+    );
     email_client
         .send_email(
             new_subscriber.email,
