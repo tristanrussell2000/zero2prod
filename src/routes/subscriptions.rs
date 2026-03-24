@@ -1,4 +1,5 @@
 use crate::domain::NewSubscriber;
+use crate::email_client::EmailClient;
 use crate::startup::AppState;
 use axum::Form;
 use axum::extract::State;
@@ -29,17 +30,8 @@ pub async fn subscribe(
             };
             match insert_subscriber(connection, &new_subscriber).await {
                 Ok(_) => {
-                    let res = email_client
-                        .send_email(
-                            new_subscriber.email,
-                            "Welcome!",
-                            "Welcome to our newsletter!",
-                            "Welcome to our newsletter!",
-                        )
-                        .await;
-
-                    if let Err(e) = res {
-                        tracing::error!("Failed to send email: {}", e);
+                    let res = send_confirmation_email(email_client, new_subscriber).await;
+                    if res.is_err() {
                         return StatusCode::INTERNAL_SERVER_ERROR;
                     }
                     tracing::info!("New subscriber details have been saved",);
@@ -59,6 +51,32 @@ pub async fn subscribe(
 }
 
 #[tracing::instrument(
+    name = "Send a confirmation email to a new subscriber",
+    skip(email_client, new_subscriber)
+)]
+pub async fn send_confirmation_email(
+    email_client: &EmailClient,
+    new_subscriber: NewSubscriber,
+) -> Result<(), reqwest::Error> {
+    let confirmation_link = "https://my-api.com/subscriptions/confirm";
+    email_client
+        .send_email(
+            new_subscriber.email,
+            "Welcome!",
+            &format!(
+                "Welcome to our newsletter!<br />\
+                            Click <a href=\"{}\">here</a> to confirm your subscription.",
+                confirmation_link
+            ),
+            &format!(
+                "Welcome to our newsletter!\nVisit {} to confirm your subscription.",
+                confirmation_link
+            ),
+        )
+        .await
+}
+
+#[tracing::instrument(
     name = "Saving new subscriber details in the database",
     skip(connection, new_subscriber)
 )]
@@ -69,7 +87,7 @@ pub async fn insert_subscriber(
     sqlx::query!(
         r#"
     INSERT INTO subscriptions (id, email, name, subscribed_at, status)
-    VALUES($1, $2, $3, $4, 'confirmed')
+    VALUES($1, $2, $3, $4, 'pending_confirmation')
     "#,
         Uuid::new_v4(),
         new_subscriber.email.as_ref(),

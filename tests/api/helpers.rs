@@ -37,8 +37,6 @@ impl TestApp {
             .send()
             .await
             .expect("Failed to post subscriptions")
-            .error_for_status()
-            .unwrap()
     }
 }
 
