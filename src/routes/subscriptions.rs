@@ -5,6 +5,8 @@ use axum::Form;
 use axum::extract::State;
 use axum::extract::rejection::FormRejection;
 use axum::http::StatusCode;
+use rand::distr::Alphanumeric;
+use rand::{RngExt, rng};
 use sqlx::PgPool;
 use sqlx::types::chrono::Utc;
 use std::sync::Arc;
@@ -14,6 +16,15 @@ use uuid::Uuid;
 pub struct FormData {
     pub email: String,
     pub name: String,
+}
+
+/// Generates a random 25-character long case-sensitive subscription token.
+fn generate_subscription_token() -> String {
+    let mut rng = rng();
+    std::iter::repeat_with(|| rng.sample(Alphanumeric))
+        .map(char::from)
+        .take(25)
+        .collect()
 }
 
 #[tracing::instrument(name = "Adding a new subscriber", skip(app_state))]
@@ -28,28 +39,59 @@ pub async fn subscribe(
             let Ok(new_subscriber) = form_data.try_into() else {
                 return StatusCode::BAD_REQUEST;
             };
-            match insert_subscriber(connection, &new_subscriber).await {
-                Ok(_) => {
-                    let res =
-                        send_confirmation_email(email_client, new_subscriber, &app_state.base_url)
-                            .await;
-                    if res.is_err() {
-                        return StatusCode::INTERNAL_SERVER_ERROR;
-                    }
-                    tracing::info!("New subscriber details have been saved",);
-                    StatusCode::OK
-                }
+            let subscriber_id = match insert_subscriber(connection, &new_subscriber).await {
+                Ok(subscriber_id) => subscriber_id,
                 Err(e) => {
                     tracing::error!(" Failed to execute query: {}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
+                    return StatusCode::INTERNAL_SERVER_ERROR;
                 }
+            };
+            let subscription_token = generate_subscription_token();
+            if store_token(connection, subscriber_id, &subscription_token)
+                .await
+                .is_err()
+            {
+                return StatusCode::INTERNAL_SERVER_ERROR;
             }
+
+            if send_confirmation_email(
+                email_client,
+                new_subscriber,
+                &app_state.base_url,
+                &subscription_token,
+            )
+            .await
+            .is_err()
+            {
+                return StatusCode::INTERNAL_SERVER_ERROR;
+            }
+            StatusCode::OK
         }
         Err(rejection) => {
             tracing::error!("Failed to parse json payload: {:?}", rejection);
             StatusCode::BAD_REQUEST
         }
     }
+}
+
+#[tracing::instrument(name = "Store a new subscription token", skip(pool, subsriber_id))]
+pub async fn store_token(
+    pool: &PgPool,
+    subsriber_id: Uuid,
+    subscription_token: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"INSERT INTO subscription_tokens (subscription_token, subscriber_id) VALUES ($1, $2)"#,
+        subscription_token,
+        subsriber_id
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to execute query: {:?}", e);
+        e
+    })?;
+    Ok(())
 }
 
 #[tracing::instrument(
@@ -60,10 +102,11 @@ pub async fn send_confirmation_email(
     email_client: &EmailClient,
     new_subscriber: NewSubscriber,
     base_url: &str,
+    subscription_token: &str,
 ) -> Result<(), reqwest::Error> {
     let confirmation_link = format!(
-        "{}/subscriptions/confirm?subscription_token=mytoken",
-        base_url
+        "{}/subscriptions/confirm?subscription_token={}",
+        base_url, subscription_token
     );
     email_client
         .send_email(
@@ -89,13 +132,14 @@ pub async fn send_confirmation_email(
 pub async fn insert_subscriber(
     connection: &PgPool,
     new_subscriber: &NewSubscriber,
-) -> Result<(), sqlx::Error> {
+) -> Result<Uuid, sqlx::Error> {
+    let subscriber_id = Uuid::new_v4();
     sqlx::query!(
         r#"
     INSERT INTO subscriptions (id, email, name, subscribed_at, status)
     VALUES($1, $2, $3, $4, 'pending_confirmation')
     "#,
-        Uuid::new_v4(),
+        subscriber_id,
         new_subscriber.email.as_ref(),
         new_subscriber.name.as_ref(),
         Utc::now()
@@ -106,5 +150,5 @@ pub async fn insert_subscriber(
         tracing::error!("Failed to execute query: {:?}", e);
         e
     })?;
-    Ok(())
+    Ok(subscriber_id)
 }
