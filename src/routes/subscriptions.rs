@@ -34,6 +34,7 @@ pub async fn subscribe(
 ) -> StatusCode {
     let connection = &app_state.db_pool;
     let email_client = &app_state.email_client;
+    tracing::error!("Received a new subscription request");
     match sign_up {
         Ok(Form(form_data)) => {
             let Ok(new_subscriber) = form_data.try_into() else {
@@ -147,21 +148,23 @@ pub async fn insert_subscriber(
     new_subscriber: &NewSubscriber,
 ) -> Result<Uuid, sqlx::Error> {
     let subscriber_id = Uuid::new_v4();
-    sqlx::query!(
+    let stored_id = sqlx::query!(
         r#"
     INSERT INTO subscriptions (id, email, name, subscribed_at, status)
     VALUES($1, $2, $3, $4, 'pending_confirmation')
+    ON CONFLICT (email) DO UPDATE SET name = excluded.name RETURNING id;
     "#,
         subscriber_id,
         new_subscriber.email.as_ref(),
         new_subscriber.name.as_ref(),
         Utc::now()
     )
-    .execute(&mut **transaction)
+    .fetch_one(&mut **transaction)
     .await
     .map_err(|e| {
         tracing::error!("Failed to execute query: {:?}", e);
         e
-    })?;
-    Ok(subscriber_id)
+    })?
+    .id;
+    Ok(stored_id)
 }
