@@ -1,3 +1,4 @@
+use crate::domain::subscription_token::SubscriptionToken;
 use crate::startup::AppState;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -7,15 +8,18 @@ use uuid::Uuid;
 
 #[derive(serde::Deserialize, Debug)]
 pub struct Parameters {
-    subscription_token: String,
+    subscription_token: SubscriptionToken,
 }
 #[tracing::instrument(name = "Confirming a pending subscriber", skip(parameters, app_state))]
 pub async fn confirm(
     parameters: Query<Parameters>,
     State(app_state): State<Arc<AppState>>,
 ) -> StatusCode {
-    let id = match get_subscriber_id_from_token(&app_state.db_pool, &parameters.subscription_token)
-        .await
+    let id = match get_subscriber_id_from_token(
+        &app_state.db_pool,
+        parameters.subscription_token.as_ref(),
+    )
+    .await
     {
         Ok(id) => id,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR,
