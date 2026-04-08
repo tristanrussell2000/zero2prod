@@ -148,3 +148,17 @@ async fn subscribing_twice_sends_a_second_confirmation_email() {
 
     assert_eq!(html_link, text_link);
 }
+
+#[tokio::test]
+async fn subscribe_fails_if_there_is_a_fatal_database_error() {
+    let app = spawn_app().await;
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+    // Sabotage the database
+    sqlx::query!("ALTER TABLE subscriptions DROP COLUMN email;",)
+        .execute(&app.db_pool)
+        .await
+        .expect("failed to sabotage the database");
+
+    let response = app.post_subscriptions(body.into()).await;
+    assert_eq!(response.status().as_u16(), 500);
+}

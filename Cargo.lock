@@ -3937,6 +3937,7 @@ dependencies = [
 name = "zero2prod"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "claim",
  "config",
@@ -3952,6 +3953,7 @@ dependencies = [
  "serde-aux",
  "serde_json",
  "sqlx",
+ "thiserror 1.0.69",
  "tokio",
  "tower-http",
  "tracing",

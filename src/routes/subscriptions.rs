@@ -1,6 +1,8 @@
 use crate::domain::NewSubscriber;
 use crate::email_client::EmailClient;
+use crate::error::AppError;
 use crate::startup::AppState;
+use anyhow::Context;
 use axum::Form;
 use axum::extract::State;
 use axum::extract::rejection::FormRejection;
@@ -31,56 +33,43 @@ fn generate_subscription_token() -> String {
 pub async fn subscribe(
     State(app_state): State<Arc<AppState>>,
     sign_up: Result<Form<FormData>, FormRejection>,
-) -> StatusCode {
+) -> Result<StatusCode, AppError> {
     let connection = &app_state.db_pool;
     let email_client = &app_state.email_client;
-    tracing::error!("Received a new subscription request");
+    tracing::info!("Received a new subscription request");
     match sign_up {
         Ok(Form(form_data)) => {
-            let Ok(new_subscriber) = form_data.try_into() else {
-                return StatusCode::BAD_REQUEST;
-            };
-            let mut transaction = match connection.begin().await {
-                Ok(transaction) => transaction,
-                Err(_) => {
-                    return StatusCode::INTERNAL_SERVER_ERROR;
-                }
-            };
-            let subscriber_id = match insert_subscriber(&mut transaction, &new_subscriber).await {
-                Ok(subscriber_id) => subscriber_id,
-                Err(e) => {
-                    tracing::error!(" Failed to execute query: {}", e);
-                    return StatusCode::INTERNAL_SERVER_ERROR;
-                }
-            };
-            let subscription_token = generate_subscription_token();
-            if store_token(&mut transaction, subscriber_id, &subscription_token)
+            let new_subscriber = form_data.try_into().map_err(AppError::ValidationError)?;
+            let mut transaction = connection
+                .begin()
                 .await
-                .is_err()
-            {
-                return StatusCode::INTERNAL_SERVER_ERROR;
-            }
+                .context("Failed to start a transaction")?;
+            let subscriber_id = insert_subscriber(&mut transaction, &new_subscriber)
+                .await
+                .context("Failed to insert the new subscriber")?;
+            let subscription_token = generate_subscription_token();
+            store_token(&mut transaction, subscriber_id, &subscription_token)
+                .await
+                .context("Failed to store the subscription token")?;
 
-            if transaction.commit().await.is_err() {
-                return StatusCode::INTERNAL_SERVER_ERROR;
-            }
+            transaction
+                .commit()
+                .await
+                .context("Failed to commit the transaction")?;
 
-            if send_confirmation_email(
+            send_confirmation_email(
                 email_client,
                 new_subscriber,
                 &app_state.base_url,
                 &subscription_token,
             )
             .await
-            .is_err()
-            {
-                return StatusCode::INTERNAL_SERVER_ERROR;
-            }
-            StatusCode::OK
+            .context("Failed to send a confirmation email")?;
+            Ok(StatusCode::OK)
         }
         Err(rejection) => {
             tracing::error!("Failed to parse json payload: {:?}", rejection);
-            StatusCode::BAD_REQUEST
+            Ok(StatusCode::BAD_REQUEST)
         }
     }
 }
@@ -93,7 +82,7 @@ pub async fn store_token(
     transaction: &mut Transaction<'_, Postgres>,
     subscriber_id: Uuid,
     subscription_token: &str,
-) -> Result<(), sqlx::Error> {
+) -> Result<(), AppError> {
     sqlx::query!(
         r#"INSERT INTO subscription_tokens (subscription_token, subscriber_id) VALUES ($1, $2)"#,
         subscription_token,
@@ -101,10 +90,7 @@ pub async fn store_token(
     )
     .execute(&mut **transaction)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        e
-    })?;
+    .context("Failed to execute query")?;
     Ok(())
 }
 
@@ -160,11 +146,7 @@ pub async fn insert_subscriber(
         Utc::now()
     )
     .fetch_one(&mut **transaction)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        e
-    })?
+    .await?
     .id;
     Ok(stored_id)
 }
