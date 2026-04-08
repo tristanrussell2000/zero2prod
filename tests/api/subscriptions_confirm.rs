@@ -102,3 +102,30 @@ async fn subscribing_twice_sends_valid_confirmation_email() {
     assert_eq!(saved.name, "John");
     assert_eq!(saved.status, "confirmed");
 }
+
+#[tokio::test]
+async fn subscribe_confirm_fails_if_there_is_a_fatal_database_error() {
+    let test_app = spawn_app().await;
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+
+    Mock::given(path("/email"))
+        .and(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&test_app.email_server)
+        .await;
+
+    let response = test_app.post_subscriptions(body.into()).await;
+    assert_eq!(response.status().as_u16(), 200);
+
+    let email_request = &test_app.email_server.received_requests().await.unwrap()[0];
+    let confirmation_links = test_app.get_confirmation_links(email_request);
+
+    // Sabotage the database
+    sqlx::query!("ALTER TABLE subscriptions DROP COLUMN status;",)
+        .execute(&test_app.db_pool)
+        .await
+        .expect("failed to sabotage the database");
+
+    let response = reqwest::get(confirmation_links.html).await.unwrap();
+    assert_eq!(500, response.status().as_u16());
+}
