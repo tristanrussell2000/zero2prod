@@ -6,6 +6,8 @@ use axum::Json;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
 use axum::http::StatusCode;
+use reqwest::header::HeaderMap;
+use secrecy::SecretString;
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -21,9 +23,11 @@ pub struct Content {
     text: String,
 }
 pub async fn publish_newsletter(
+    headers: HeaderMap,
     State(app_state): State<Arc<AppState>>,
     body_data: Result<Json<BodyData>, JsonRejection>,
 ) -> Result<StatusCode, AppError> {
+    let _credentials = basic_authentication(&headers).map_err(AppError::AuthError)?;
     let subscribers = get_confirmed_subscribers(&app_state.db_pool).await?;
     let body_data =
         body_data.map_err(|_| AppError::ValidationError("Invalid JSON payload".into()))?;
@@ -47,6 +51,42 @@ pub async fn publish_newsletter(
         }
     }
     Ok(StatusCode::OK)
+}
+
+struct Credentials {
+    username: String,
+    password: SecretString,
+}
+
+fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Error> {
+    let header_value = headers
+        .get("Authorization")
+        .context("Missing Authorization header")?
+        .to_str()
+        .context("The Authorization header was not a valid UTF8 string")?;
+
+    let base64encoded_segment = header_value
+        .strip_prefix("Basic ")
+        .context("The authorization scheme was not 'Basic'")?;
+
+    let decoded_bytes = base64::decode_config(base64encoded_segment, base64::STANDARD)
+        .context("Failed to base64-encode 'Basic' credentials")?;
+
+    let decoded_credentials =
+        String::from_utf8(decoded_bytes).context("Failed to decode base64-encoded credentials")?;
+
+    let mut credentials = decoded_credentials.splitn(2, ':');
+    let username = credentials
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("A username must be provided in 'Basic' auth."))?;
+    let password = credentials
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("A password must be provided in 'Basic' auth."))?;
+
+    Ok(Credentials {
+        username: username.to_string(),
+        password: SecretString::from(password),
+    })
 }
 
 struct ConfirmedSubscriber {
