@@ -7,7 +7,7 @@ use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
 use axum::http::StatusCode;
 use reqwest::header::HeaderMap;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -22,12 +22,25 @@ pub struct Content {
     html: String,
     text: String,
 }
+
+#[tracing::instrument(
+    name = "Publish newsletter", 
+    skip(headers, app_state, body_data),
+    fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
+)]
 pub async fn publish_newsletter(
     headers: HeaderMap,
     State(app_state): State<Arc<AppState>>,
     body_data: Result<Json<BodyData>, JsonRejection>,
 ) -> Result<StatusCode, AppError> {
-    let _credentials = basic_authentication(&headers).map_err(AppError::AuthError)?;
+    let credentials = basic_authentication(&headers).map_err(AppError::AuthError)?;
+    tracing::Span::current().record("username", tracing::field::display(&credentials.username));
+
+    let user_id = validate_credentials(&credentials, &app_state.db_pool)
+        .await
+        .map_err(AppError::AuthError)?;
+    tracing::Span::current().record("user_id", tracing::field::display(&user_id));
+
     let subscribers = get_confirmed_subscribers(&app_state.db_pool).await?;
     let body_data =
         body_data.map_err(|_| AppError::ValidationError("Invalid JSON payload".into()))?;
@@ -87,6 +100,24 @@ fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Erro
         username: username.to_string(),
         password: SecretString::from(password),
     })
+}
+
+async fn validate_credentials(
+    credentials: &Credentials,
+    pg_pool: &PgPool,
+) -> Result<uuid::Uuid, anyhow::Error> {
+    let user_id: Option<_> = sqlx::query!(
+        r#"SELECT user_id FROM users WHERE username = $1 AND password = $2"#,
+        credentials.username,
+        credentials.password.expose_secret()
+    )
+    .fetch_optional(pg_pool)
+    .await
+    .context("Failed to perform a query to validate auth credentials")?;
+
+    user_id
+        .map(|row| row.user_id)
+        .ok_or_else(|| anyhow::anyhow!("Invalid credentials"))
 }
 
 struct ConfirmedSubscriber {
