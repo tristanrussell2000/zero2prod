@@ -2,13 +2,13 @@ use crate::domain::SubscriberEmail;
 use crate::error::AppError;
 use crate::startup::AppState;
 use anyhow::Context;
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use axum::Json;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
 use axum::http::StatusCode;
 use reqwest::header::HeaderMap;
 use secrecy::{ExposeSecret, SecretString};
-use sha3::Digest;
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -107,20 +107,30 @@ async fn validate_credentials(
     credentials: &Credentials,
     pg_pool: &PgPool,
 ) -> Result<uuid::Uuid, anyhow::Error> {
-    let password_hash = sha3::Sha3_256::digest(credentials.password.expose_secret().as_bytes());
-    let password_hash = format!("{:x}", password_hash);
-    let user_id: Option<_> = sqlx::query!(
-        r#"SELECT user_id FROM users WHERE username = $1 AND password_hash = $2"#,
-        credentials.username,
-        password_hash
+    let row: Option<_> = sqlx::query!(
+        r#"SELECT user_id, password_hash FROM users WHERE username = $1"#,
+        credentials.username
     )
     .fetch_optional(pg_pool)
     .await
     .context("Failed to perform a query to validate auth credentials")?;
 
-    user_id
-        .map(|row| row.user_id)
-        .ok_or_else(|| anyhow::anyhow!("Invalid credentials"))
+    let (expected_password_hash, user_id) = match row {
+        Some(row) => (row.password_hash, row.user_id),
+        None => return Err(anyhow::anyhow!("Invalid credentials")),
+    };
+
+    let expected_password_hash = PasswordHash::new(&expected_password_hash)
+        .context("Failed to parse the stored password hash")?;
+
+    Argon2::default()
+        .verify_password(
+            credentials.password.expose_secret().as_bytes(),
+            &expected_password_hash,
+        )
+        .context("Failed to verify the password")?;
+
+    Ok(user_id)
 }
 
 struct ConfirmedSubscriber {

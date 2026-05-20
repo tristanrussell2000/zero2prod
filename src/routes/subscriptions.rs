@@ -7,11 +7,12 @@ use axum::Form;
 use axum::extract::State;
 use axum::extract::rejection::FormRejection;
 use axum::http::StatusCode;
-use rand::distr::Alphanumeric;
-use rand::{RngExt, rng};
+use rand::rngs::ThreadRng;
 use sqlx::types::chrono::Utc;
 use sqlx::{Postgres, Transaction};
 use std::sync::Arc;
+use rand::distributions::Alphanumeric;
+use rand::Rng;
 use uuid::Uuid;
 
 #[derive(serde::Deserialize, Debug)]
@@ -22,7 +23,7 @@ pub struct FormData {
 
 /// Generates a random 25-character long case-sensitive subscription token.
 fn generate_subscription_token() -> String {
-    let mut rng = rng();
+    let mut rng = ThreadRng::default();
     std::iter::repeat_with(|| rng.sample(Alphanumeric))
         .map(char::from)
         .take(25)
