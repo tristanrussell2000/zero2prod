@@ -7,12 +7,12 @@ use axum::Form;
 use axum::extract::State;
 use axum::extract::rejection::FormRejection;
 use axum::http::StatusCode;
+use rand::Rng;
+use rand::distributions::Alphanumeric;
 use rand::rngs::ThreadRng;
 use sqlx::types::chrono::Utc;
 use sqlx::{Postgres, Transaction};
 use std::sync::Arc;
-use rand::distributions::Alphanumeric;
-use rand::Rng;
 use uuid::Uuid;
 
 #[derive(serde::Deserialize, Debug)]

@@ -1,5 +1,6 @@
 use crate::helpers::{ConfirmationLinks, TestApp, spawn_app};
 use serde_json::json;
+use uuid::Uuid;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, ResponseTemplate};
 
@@ -85,6 +86,61 @@ async fn requests_missing_authorization_are_rejected() {
 
     let response = reqwest::Client::new()
         .post(&format!("{}/newsletters", &test_app.address))
+        .json(&json!({
+            "title": "Newsletter title",
+            "content": {
+                "text": "Newsletter content as plain text",
+                "html": "<p>Newsletter content as html</p>"
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(401, response.status().as_u16());
+    assert_eq!(
+        r#"Basic realm="publish""#,
+        response.headers()["WWW-Authenticate"]
+    )
+}
+
+#[tokio::test]
+async fn non_existing_user_is_rejected() {
+    let test_app = spawn_app().await;
+    let username = Uuid::new_v4().to_string();
+    let password = Uuid::new_v4().to_string();
+
+    let response = reqwest::Client::new()
+        .post(&format!("{}/newsletters", &test_app.address))
+        .basic_auth(username, Some(password))
+        .json(&json!({
+            "title": "Newsletter title",
+            "content": {
+                "text": "Newsletter content as plain text",
+                "html": "<p>Newsletter content as html</p>"
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(401, response.status().as_u16());
+    assert_eq!(
+        r#"Basic realm="publish""#,
+        response.headers()["WWW-Authenticate"]
+    )
+}
+
+#[tokio::test]
+async fn invalid_password_is_rejected() {
+    let test_app = spawn_app().await;
+    let username = &test_app.test_user.username;
+    let password = Uuid::new_v4().to_string();
+    assert_ne!(password, test_app.test_user.password);
+
+    let response = reqwest::Client::new()
+        .post(&format!("{}/newsletters", &test_app.address))
+        .basic_auth(username, Some(password))
         .json(&json!({
             "title": "Newsletter title",
             "content": {
