@@ -1,5 +1,4 @@
-use axum::http::header::WWW_AUTHENTICATE;
-use axum::http::{HeaderValue, StatusCode};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 
 fn error_chain_fmt(
@@ -32,10 +31,8 @@ impl IntoResponse for AppError {
                 .body(())
                 .unwrap(),
             AppError::AuthError(_) => {
-                let header_value = HeaderValue::from_str(r#"Basic realm="publish""#).unwrap();
                 Response::builder()
                     .status(StatusCode::UNAUTHORIZED)
-                    .header(WWW_AUTHENTICATE, header_value)
                     .body(())
                     .unwrap()
             }

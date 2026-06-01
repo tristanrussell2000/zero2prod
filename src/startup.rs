@@ -1,6 +1,6 @@
 use crate::configuration::{DatabaseSettings, Settings};
 use crate::email_client::EmailClient;
-use crate::routes::{confirm, health_check, home, publish_newsletter, subscribe};
+use crate::routes::{confirm, health_check, home, login, login_form, publish_newsletter, subscribe};
 use axum::Router;
 use axum::http::Request;
 use axum::routing::{get, post};
@@ -84,6 +84,8 @@ pub fn run(
         .route("/subscriptions", post(subscribe))
         .route("/subscriptions/confirm", get(confirm))
         .route("/newsletters", post(publish_newsletter))
+        .route("/login", get(login_form))
+        .route("/login", post(login))
         .route("/", get(home))
         .with_state(Arc::new(AppState {
             db_pool,
