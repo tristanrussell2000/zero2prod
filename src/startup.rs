@@ -8,6 +8,7 @@ use axum::serve::Serve;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
+use secrecy::SecretString;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 use tracing::info_span;
@@ -17,6 +18,7 @@ pub struct AppState {
     pub db_pool: PgPool,
     pub email_client: EmailClient,
     pub base_url: String,
+    pub secret: SecretString,
 }
 
 pub struct Application {
@@ -54,6 +56,7 @@ impl Application {
                 connection_pool,
                 email_client,
                 configuration.application.base_url,
+                configuration.application.hmac_secret
             )?,
         })
     }
@@ -78,6 +81,7 @@ pub fn run(
     db_pool: PgPool,
     email_client: EmailClient,
     base_url: String,
+    hmac_secret: SecretString
 ) -> Result<Serve<TcpListener, Router, Router>, std::io::Error> {
     let app = Router::new()
         .route("/healthcheck", get(health_check))
@@ -91,6 +95,7 @@ pub fn run(
             db_pool,
             email_client,
             base_url,
+            secret: hmac_secret,
         }))
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {

@@ -34,13 +34,13 @@ pub async fn publish_newsletter(
     State(app_state): State<Arc<AppState>>,
     body_data: Result<Json<BodyData>, JsonRejection>,
 ) -> Result<StatusCode, AppError> {
-    let credentials = basic_authentication(&headers).map_err(AppError::AuthError)?;
+    let credentials = basic_authentication(&headers).map_err(AppError::PublishAuthError)?;
     tracing::Span::current().record("username", tracing::field::display(&credentials.username));
 
     let user_id = validate_credentials(credentials, &app_state.db_pool)
         .await
         .map_err(|e| match e {
-            AuthError::InvalidCredentials(_) => AppError::AuthError(e.into()),
+            AuthError::InvalidCredentials(_) => AppError::PublishAuthError(e),
             AuthError::UnexpectedError(_) => AppError::UnexpectedError(e.into()),
         })?;
     tracing::Span::current().record("user_id", tracing::field::display(&user_id));
@@ -70,7 +70,7 @@ pub async fn publish_newsletter(
     Ok(StatusCode::OK)
 }
 
-fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Error> {
+fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, AuthError> {
     let header_value = headers
         .get("Authorization")
         .context("Missing Authorization header")?
