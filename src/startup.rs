@@ -1,14 +1,16 @@
 use crate::configuration::{DatabaseSettings, Settings};
 use crate::email_client::EmailClient;
-use crate::routes::{confirm, health_check, home, login, login_form, publish_newsletter, subscribe};
+use crate::routes::{
+    confirm, health_check, home, login, login_form, publish_newsletter, subscribe,
+};
 use axum::Router;
 use axum::http::Request;
 use axum::routing::{get, post};
 use axum::serve::Serve;
+use secrecy::SecretString;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
-use secrecy::SecretString;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 use tracing::info_span;
@@ -56,7 +58,7 @@ impl Application {
                 connection_pool,
                 email_client,
                 configuration.application.base_url,
-                configuration.application.hmac_secret
+                configuration.application.hmac_secret,
             )?,
         })
     }
@@ -81,7 +83,7 @@ pub fn run(
     db_pool: PgPool,
     email_client: EmailClient,
     base_url: String,
-    hmac_secret: SecretString
+    hmac_secret: SecretString,
 ) -> Result<Serve<TcpListener, Router, Router>, std::io::Error> {
     let app = Router::new()
         .route("/healthcheck", get(health_check))

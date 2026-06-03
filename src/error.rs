@@ -1,10 +1,10 @@
+use crate::authentication::AuthError;
 use axum::body::Body;
-use axum::http::header::{LOCATION, WWW_AUTHENTICATE};
 use axum::http::StatusCode;
+use axum::http::header::{LOCATION, WWW_AUTHENTICATE};
 use axum::response::{IntoResponse, Response};
 use hmac::{Hmac, Mac};
 use secrecy::{ExposeSecret, SecretString};
-use crate::authentication::AuthError;
 
 fn error_chain_fmt(
     e: &impl std::error::Error,
@@ -38,14 +38,11 @@ impl IntoResponse for AppError {
                 .body(Body::empty())
                 .unwrap(),
             AppError::AuthError(e, secret) => {
-                let query_string = format!(
-                    "error={}",
-                    urlencoding::Encoded::new(e.to_string())
-                );
+                let query_string = format!("error={}", urlencoding::Encoded::new(e.to_string()));
                 let hmac_tag = {
-                    let mut mac = Hmac::<sha2::Sha256>::new_from_slice(
-                        secret.expose_secret().as_bytes()
-                    ).unwrap();
+                    let mut mac =
+                        Hmac::<sha2::Sha256>::new_from_slice(secret.expose_secret().as_bytes())
+                            .unwrap();
                     mac.update(query_string.as_bytes());
                     mac.finalize().into_bytes()
                 };
@@ -55,13 +52,11 @@ impl IntoResponse for AppError {
                     .body(Body::empty())
                     .unwrap()
             }
-            AppError::PublishAuthError(_) => {
-                Response::builder()
-                    .status(StatusCode::UNAUTHORIZED)
-                    .header(WWW_AUTHENTICATE, r#"Basic realm="publish""#)
-                    .body(Body::empty())
-                    .unwrap()
-            }
+            AppError::PublishAuthError(_) => Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .header(WWW_AUTHENTICATE, r#"Basic realm="publish""#)
+                .body(Body::empty())
+                .unwrap(),
             _ => Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::empty())
