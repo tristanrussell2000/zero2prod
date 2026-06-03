@@ -6,7 +6,7 @@ use sqlx::PgPool;
 
 #[derive(thiserror::Error, Debug)]
 pub enum AuthError {
-    #[error("invalid credentials.")]
+    #[error("Invalid credentials.")]
     InvalidCredentials(#[source] anyhow::Error),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
